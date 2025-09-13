@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#B22222"              # rouge accent
+backgroundColor = "#FFFFFF"           # fond blanc
+secondaryBackgroundColor = "#F5F5F5"  # gris clair
+textColor = "#333333"                 # texte gris foncé
+font = "sans serif"
