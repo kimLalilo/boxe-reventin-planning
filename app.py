@@ -1,9 +1,6 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
-from sqlalchemy import asc
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from supabase import create_client, Client
 import hashlib
-from datetime import datetime, timedelta
 import pandas as pd
 
 # -------------------------
@@ -32,50 +29,12 @@ with st.sidebar:
     except: st.write("🥊")
     st.markdown("### Club de Boxe Reventin")
 
-
 # -------------------------
 # Config base de données
 # -------------------------
-DATABASE_URL = st.secrets["database"]["url"]
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-Base = declarative_base()
-
-# -------------------------
-# Models
-# -------------------------
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    email = Column(String, unique=True)
-    nom = Column(String)
-    password = Column(String)
-    role = Column(String, default="user")
-    formula = Column(Integer, default=1)
-    reservations = relationship("Reservation", back_populates="user")
-
-class CourseSlot(Base):
-    __tablename__ = "courseslot"
-    id = Column(Integer, primary_key=True)
-    title = Column(String)
-    weekday = Column(Integer)  # 0=lundi ... 4=vendredi
-    start_time = Column(String)
-    end_time = Column(String)
-    capacity = Column(Integer, default=10)
-    reservations = relationship("Reservation", back_populates="course")
-
-class Reservation(Base):
-    __tablename__ = "reservation"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    course_id = Column(Integer, ForeignKey("courseslot.id"))
-    cancelled = Column(Boolean, default=False)
-    waitlist = Column(Boolean, default=False)
-
-    user = relationship("User", back_populates="reservations")
-    course = relationship("CourseSlot", back_populates="reservations")
-
-Base.metadata.create_all(engine)
+supabase_url = st.secrets["supabase"]["url"]
+supabase_key = st.secrets["supabase"]["key"]
+supabase = create_client(supabase_url, supabase_key)
 
 # -------------------------
 # Helpers
@@ -89,20 +48,26 @@ def verify_password(pw, hashed):
 def get_weekdays():
     return ["Lundi","Mardi","Mercredi","Jeudi","Vendredi"]
 
-def login_user(email, password):
-    db = Session()
-    user = db.query(User).filter_by(email=email).first()
-    if user and verify_password(password, user.password):
-        st.session_state["user_id"] = user.id
-        st.session_state["role"] = user.role
-        return True
-    return False
+# -------------------------
+# Users
+# -------------------------
+def get_user_by_email(email):
+    resp = supabase.table("users").select("*").eq("email", email).execute()
+    return resp.data[0] if resp.data else None
 
 def get_current_user():
     if "user_id" in st.session_state:
-        db = Session()
-        return db.query(User).get(st.session_state["user_id"])
+        resp = supabase.table("users").select("*").eq("id", st.session_state["user_id"]).execute()
+        return resp.data[0] if resp.data else None
     return None
+
+def login_user(email, password):
+    user = get_user_by_email(email)
+    if user and verify_password(password, user["password"]):
+        st.session_state["user_id"] = user["id"]
+        st.session_state["role"] = user["role"]
+        return True
+    return False
 
 # -------------------------
 # UI Connexion
@@ -122,9 +87,8 @@ def login_ui():
 # -------------------------
 # UI Utilisateur
 # -------------------------
-def user_view(user: User):
+def user_view(user):
     tabs = st.tabs(["Planning hebdo", "Mon compte"])
-    db = Session()
 
     # Planning
     with tabs[0]:
@@ -134,23 +98,18 @@ def user_view(user: User):
         for idx, day in enumerate(weekdays):
             with cols[idx]:
                 st.markdown(f"### {day}")
-                # Exemple pour user_view
-                slots = db.query(CourseSlot).filter_by(weekday=idx).order_by(asc(CourseSlot.start_time)).all()
+                slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
                 for slot in slots:
-                    count_res = db.query(Reservation).filter(
-                        Reservation.course_id==slot.id,
-                        Reservation.cancelled==False,
-                        Reservation.waitlist==False
-                    ).count()
-                    dispo = slot.capacity - count_res
-                    st.markdown(f"**{slot.title} ({slot.start_time}-{slot.end_time})**")
+                    count_res = supabase.table("reservation").select("id", count="exact") \
+                        .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                    dispo = slot["capacity"] - count_res
+                    st.markdown(f"**{slot['title']} ({slot['start_time']}-{slot['end_time']})**")
                     st.write(f"Places restantes : {dispo}")
-                    already = db.query(Reservation).filter_by(
-                        user_id=user.id, course_id=slot.id, cancelled=False
-                    ).first()
-                    # Add green background for booked slots
-                    
-                    with st.form(f"res_{slot.id}"):
+
+                    already = supabase.table("reservation").select("*") \
+                        .eq("user_id", user["id"]).eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+
+                    with st.form(f"res_{slot['id']}"):
                         if already:
                             cancel = st.form_submit_button("Annuler", 
                                                           use_container_width=True,
@@ -164,29 +123,22 @@ def user_view(user: User):
                             </style>
                             """, unsafe_allow_html=True)
                             if cancel:
-                                if not already.waitlist:
-                                    already.cancelled = True
-                                    db.commit()
-                                    st.success("Réservation annulée")
-                                    st.rerun()
-                                else:
-                                    db.delete(already)
-                                    db.commit()
-                                    st.success("Annulé de la liste d'attente")
-                                    st.rerun()
+                                supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
+                                st.success("Réservation annulée")
+                                st.rerun()
                         else:
                             if dispo > 0:
                                 reserve = st.form_submit_button("Réserver")
                                 if reserve:
-                                    week_res = db.query(Reservation).join(CourseSlot).filter(
-                                        Reservation.user_id==user.id,
-                                        Reservation.cancelled==False,
-                                        Reservation.waitlist==False
-                                    ).count()
-                                    if week_res < user.formula:
-                                        r = Reservation(user_id=user.id, course_id=slot.id)
-                                        db.add(r)
-                                        db.commit()
+                                    week_res = supabase.table("reservation").select("id", count="exact") \
+                                        .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                                    if week_res < user["formula"]:
+                                        supabase.table("reservation").insert({
+                                            "user_id": user["id"],
+                                            "course_id": slot["id"],
+                                            "waitlist": False,
+                                            "cancelled": False
+                                        }).execute()
                                         st.success("Réservation confirmée")
                                         st.rerun()
                                     else:
@@ -194,12 +146,14 @@ def user_view(user: User):
                             else:
                                 wait = st.form_submit_button("Cours complet - Liste d'attente")
                                 if wait:
-                                    r = Reservation(user_id=user.id, course_id=slot.id, waitlist=True)
-                                    db.add(r)
-                                    db.commit()
+                                    supabase.table("reservation").insert({
+                                        "user_id": user["id"],
+                                        "course_id": slot["id"],
+                                        "waitlist": True,
+                                        "cancelled": False
+                                    }).execute()
                                     st.success("Inscrit sur liste d'attente")
                                     st.rerun()
-                    
 
     # Mon compte
     with tabs[1]:
@@ -208,78 +162,55 @@ def user_view(user: User):
             new_pw = st.text_input("Nouveau mot de passe", type="password")
             submit_pw = st.form_submit_button("Changer")
             if submit_pw and new_pw:
-                user.password = hash_password(new_pw)
-                db.commit()
+                supabase.table("users").update({"password": hash_password(new_pw)}).eq("id", user["id"]).execute()
                 st.success("Mot de passe modifié")
 
 # -------------------------
 # UI Coach
 # -------------------------
 def coach_view():
-    db = Session()
     st.subheader("Planning coach")
     weekdays = get_weekdays()
     cols = st.columns(len(weekdays))
     for idx, day in enumerate(weekdays):
         with cols[idx]:
             st.markdown(f"### {day}")
-            slots = db.query(CourseSlot).filter_by(weekday=idx).order_by(asc(CourseSlot.start_time)).all()
+            slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
             for slot in slots:
-                count_res = db.query(Reservation).filter(
-                    Reservation.course_id==slot.id,
-                    Reservation.cancelled==False,
-                    Reservation.waitlist==False
-                ).count()
-                wait_count = db.query(Reservation).filter(
-                    Reservation.course_id==slot.id,
-                    Reservation.cancelled==False,
-                    Reservation.waitlist==True
-                ).count()
-                # Display title and time on first line
-                st.markdown(f"**{slot.title}** ({slot.start_time}-{slot.end_time})")
-                # Display capacity count on second line in red if zero reservations
+                count_res = supabase.table("reservation").select("id", count="exact") \
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                wait_count = supabase.table("reservation").select("id", count="exact") \
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).execute().count
+                st.markdown(f"**{slot['title']}** ({slot['start_time']}-{slot['end_time']})")
                 if count_res == 0:
-                    st.markdown(f"<span style='color:red;'>{count_res}/{slot.capacity} réservés</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:red'>{count_res}/{slot['capacity']} réservés</span>", unsafe_allow_html=True)
                 else:
-                    st.write(f"{count_res}/{slot.capacity} réservés")
+                    st.write(f"{count_res}/{slot['capacity']} réservés")
                 if count_res + wait_count > 0:
-                    if st.button(f"Voir utilisateurs ({slot.id})"):
-                        res = db.query(Reservation).filter(
-                            Reservation.course_id==slot.id,
-                            Reservation.cancelled==False
-                        ).all()
-                        st.info("\n".join([f"{r.user.nom} ({r.user.email})" + (" - Liste d'attente" if r.waitlist else "") for r in res]))
+                    with st.expander(f"Voir utilisateurs ({count_res})"):
+                        res = supabase.table("reservation").select("*, users(*)").eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+                        user_lines = []
+                        for r in res:
+                            user_name = r['users']['nom'] if 'users' in r and r['users'] else "Inconnu"
+                            waitlist = " (liste d'attente)" if r.get('waitlist', False) else ""
+                            st.markdown(f"- {user_name}{waitlist}")
 
 # -------------------------
 # UI Admin
 # -------------------------
 def admin_view():
-    db = Session()
     st.subheader("Administration")
-
     tabs = st.tabs(["Utilisateurs", "Cours"])
 
-    # -------------------------
-    # Gestion Utilisateurs
-    # -------------------------
+    # Utilisateurs
     with tabs[0]:
         st.subheader("Gestion des utilisateurs")
-        
-        # Récupération et affichage sous forme de table
-        def refresh_users():
-            users = db.query(User).all()
-            df_users = pd.DataFrame([{
-                "Nom": u.nom,
-                "Email": u.email,
-                "Rôle": u.role,
-                "Formule": u.formula
-            } for u in users])
-            st.dataframe(df_users)
-            return users
+        users = supabase.table("users").select("*").execute().data
+        df_users = pd.DataFrame(users)
+        # Drop the password column to avoid displaying sensitive information
+        df_users = df_users.drop(columns=['password'], errors='ignore')
+        st.dataframe(df_users)
 
-        users = refresh_users()
-
-        # Ajouter un utilisateur
         with st.expander("Ajouter un utilisateur"):
             with st.form("add_user"):
                 nom = st.text_input("Nom")
@@ -288,68 +219,57 @@ def admin_view():
                 role = st.selectbox("Rôle", ["user","coach","admin"])
                 formula = st.number_input("Formule (nb cours)",1,5,1)
                 if st.form_submit_button("Créer"):
-                    if db.query(User).filter_by(email=email).first():
+                    if get_user_by_email(email):
                         st.error("Email déjà utilisé")
                     else:
-                        new = User(nom=nom,email=email,password=hash_password(pw),role=role,formula=formula)
-                        db.add(new)
-                        db.commit()
+                        supabase.table("users").insert({
+                            "nom": nom,
+                            "email": email,
+                            "password": hash_password(pw),
+                            "role": role,
+                            "formula": formula
+                        }).execute()
                         st.success("Utilisateur créé")
                         st.rerun()
 
-        # Modifier / Supprimer un utilisateur
-        with st.expander("Modifier / Supprimer un utilisateur"):
-            if users:
-                user_sel = st.selectbox("Sélectionner un utilisateur", users, format_func=lambda u: f"{u.nom} ({u.email})")
-                if user_sel:
-                    with st.form(f"edit_user_{user_sel.id}"):
-                        nom = st.text_input("Nom", value=user_sel.nom)
-                        role = st.selectbox("Rôle", ["user","coach","admin"], index=["user","coach","admin"].index(user_sel.role))
-                        formula = st.number_input("Formule",1,5,user_sel.formula)
-                        pw = st.text_input("Nouveau mot de passe (laisser vide pour ne pas changer)", type="password")
-                        edit = st.form_submit_button("Modifier")
-                        delete = st.form_submit_button("Supprimer")
-                        
-                        if edit:
-                            user_sel.nom = nom
-                            user_sel.role = role
-                            user_sel.formula = formula
-                            if pw:
-                                user_sel.password = hash_password(pw)
-                            db.commit()
-                            st.success("Utilisateur modifié")
-                            st.rerun()
+        # --- Modifier / Supprimer utilisateur ---
+        with st.expander("✏️ Modifier / Supprimer un utilisateur"):
+            user_ids = {u["nom"]: u["id"] for u in users}
+            if user_ids:
+                selected = st.selectbox("Choisir un utilisateur", list(user_ids.keys()))
+                user_id = user_ids[selected]
+                user_data = next(u for u in users if u["id"] == user_id)
 
-                        if delete:
-                            db.delete(user_sel)
-                            db.commit()
-                            st.success("Utilisateur supprimé")
-                            st.rerun()
-            else:
-                st.info("Aucun utilisateur trouvé")
+                with st.form("edit_user"):
+                    nom = st.text_input("Nom", user_data["nom"])
+                    email = st.text_input("Email", user_data["email"])
+                    role = st.selectbox("Rôle", ["user","coach","admin"], index=["user","coach","admin"].index(user_data["role"]))
+                    formula = st.number_input("Formule (nb cours)", 1, 5, user_data["formula"])
+                    update_btn = st.form_submit_button("💾 Sauvegarder")
+                    delete_btn = st.form_submit_button("🗑️ Supprimer")
 
-    # -------------------------
-    # Gestion Cours
-    # -------------------------
+                    if update_btn:
+                        supabase.table("users").update({
+                            "nom": nom,
+                            "email": email,
+                            "role": role,
+                            "formula": formula
+                        }).eq("id", user_id).execute()
+                        st.success("Utilisateur mis à jour")
+                        st.rerun()
+
+                    if delete_btn:
+                        supabase.table("users").delete().eq("id", user_id).execute()
+                        st.success("Utilisateur supprimé")
+                        st.rerun()
+
+    # Cours
     with tabs[1]:
         st.subheader("Gestion des cours")
-        
-        # Récupération et affichage sous forme de table
-        def refresh_courses():
-            courses = db.query(CourseSlot).all()
-            df_courses = pd.DataFrame([{
-                "Titre": c.title,
-                "Jour": get_weekdays()[c.weekday],
-                "Début": c.start_time,
-                "Fin": c.end_time,
-                "Capacité": c.capacity
-            } for c in courses])
-            st.dataframe(df_courses)
-            return courses
+        courses = supabase.table("courseslot").select("*").execute().data
+        df_courses = pd.DataFrame(courses)
+        st.dataframe(df_courses)
 
-        courses = refresh_courses()
-
-        # Ajouter un cours
         with st.expander("Ajouter un cours"):
             with st.form("add_course"):
                 title = st.text_input("Titre")
@@ -358,43 +278,48 @@ def admin_view():
                 end = st.text_input("Heure fin (HH:MM)")
                 cap = st.number_input("Capacité",1,50,10)
                 if st.form_submit_button("Créer le cours"):
-                    newc = CourseSlot(title=title,weekday=weekday,start_time=start,end_time=end,capacity=cap)
-                    db.add(newc)
-                    db.commit()
+                    supabase.table("courseslot").insert({
+                        "title": title,
+                        "weekday": weekday,
+                        "start_time": start,
+                        "end_time": end,
+                        "capacity": cap
+                    }).execute()
                     st.success("Cours ajouté")
                     st.rerun()
 
-        # Modifier / Supprimer un cours
-        with st.expander("Modifier / Supprimer un cours"):
-            if courses:
-                course_sel = st.selectbox("Sélectionner un cours", courses, format_func=lambda c: f"{c.title} ({get_weekdays()[c.weekday]} {c.start_time}-{c.end_time})")
-                if course_sel:
-                    with st.form(f"edit_course_{course_sel.id}"):
-                        title = st.text_input("Titre", value=course_sel.title)
-                        weekday = st.selectbox("Jour", list(range(5)), index=course_sel.weekday, format_func=lambda x:get_weekdays()[x])
-                        start = st.text_input("Heure début", value=course_sel.start_time)
-                        end = st.text_input("Heure fin", value=course_sel.end_time)
-                        cap = st.number_input("Capacité",1,50,course_sel.capacity)
-                        edit = st.form_submit_button("Modifier")
-                        delete = st.form_submit_button("Supprimer")
-                        
-                        if edit:
-                            course_sel.title = title
-                            course_sel.weekday = weekday
-                            course_sel.start_time = start
-                            course_sel.end_time = end
-                            course_sel.capacity = cap
-                            db.commit()
-                            st.success("Cours modifié")
-                            st.rerun()
+        # --- Modifier / Supprimer un cours ---
+        with st.expander("✏️ Modifier / Supprimer un cours"):
+            course_ids = {c["title"]: c["id"] for c in courses}
+            if course_ids:
+                selected = st.selectbox("Choisir un cours", list(course_ids.keys()))
+                course_id = course_ids[selected]
+                course_data = next(c for c in courses if c["id"] == course_id)
 
-                        if delete:
-                            db.delete(course_sel)
-                            db.commit()
-                            st.success("Cours supprimé")
-                            st.rerun()
-            else:
-                st.info("Aucun cours trouvé")
+                with st.form("edit_course"):
+                    title = st.text_input("Titre", course_data["title"])
+                    weekday = st.selectbox("Jour", list(range(5)), index=course_data["weekday"], format_func=lambda x:get_weekdays()[x])
+                    start = st.text_input("Heure début (HH:MM)", course_data["start_time"])
+                    end = st.text_input("Heure fin (HH:MM)", course_data["end_time"])
+                    cap = st.number_input("Capacité",1,50,course_data["capacity"])
+                    update_btn = st.form_submit_button("💾 Sauvegarder")
+                    delete_btn = st.form_submit_button("🗑️ Supprimer")
+
+                    if update_btn:
+                        supabase.table("courseslot").update({
+                            "title": title,
+                            "weekday": weekday,
+                            "start_time": start,
+                            "end_time": end,
+                            "capacity": cap
+                        }).eq("id", course_id).execute()
+                        st.success("Cours mis à jour")
+                        st.rerun()
+
+                    if delete_btn:
+                        supabase.table("courseslot").delete().eq("id", course_id).execute()
+                        st.success("Cours supprimé")
+                        st.rerun()
 
 # -------------------------
 # Main
@@ -407,25 +332,25 @@ with tabs[0]:
     if not user:
         login_ui()
     else:
-        st.info(f"Connecté en tant que {user.nom} ({user.email}) - rôle: {user.role}")
+        st.info(f"Connecté en tant que {user['nom']} ({user['email']}) - rôle: {user['role']}")
         if st.button("Se déconnecter"):
             st.session_state.clear()
             st.rerun()
 
 with tabs[1]:
-    if user and user.role in ["user","admin"]:
+    if user and user["role"] in ["user","admin"]:
         user_view(user)
     else:
         st.warning("Accès réservé aux utilisateurs")
 
 with tabs[2]:
-    if user and user.role in ["coach","admin"]:
+    if user and user["role"] in ["coach","admin"]:
         coach_view()
     else:
         st.warning("Accès réservé aux coachs")
 
 with tabs[3]:
-    if user and user.role=="admin":
+    if user and user["role"]=="admin":
         admin_view()
     else:
         st.warning("Accès réservé aux admins")
