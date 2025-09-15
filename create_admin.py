@@ -6,7 +6,7 @@ SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
 
 # Vérifier si l'admin existe déjà
-admin_email = "nguyen.kim0781@gmail.com"
+admin_email = "admin@example.com"
 admin = db.query(User).filter(User.email == admin_email).first()
 
 if not admin:
