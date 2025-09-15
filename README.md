@@ -1,6 +1,6 @@
 # Club de Boxe Reventin – Gestion des Inscriptions
 
-Application web pour gérer les inscriptions aux cours de boxe du **Club de Boxe Reventin**, développée avec **Streamlit** et **SQLAlchemy**.  
+Application web pour gérer les inscriptions aux cours de boxe du **Club de Boxe Reventin**, développée avec **Streamlit**.  
 La base de données est hébergée sur **Supabase (PostgreSQL)**.
 
 ---
@@ -34,8 +34,7 @@ La base de données est hébergée sur **Supabase (PostgreSQL)**.
 ## Prérequis
 
 - Python 3.10 ou supérieur  
-- Streamlit  
-- SQLAlchemy  
+- Streamlit   
 - Pandas  
 - psycopg2-binary (pour la connexion PostgreSQL / Supabase)
 
@@ -88,4 +87,4 @@ engine = create_engine(DATABASE_URL, connect_args={"sslmode": "require"})
 ## Auteur
 Nom : Nguyen Kim
 Projet : Club de Boxe Reventin – Gestion des inscriptions
-Tech Stack : Python, Streamlit, SQLAlchemy, Supabase
+Tech Stack : Python, Streamlit, Supabase

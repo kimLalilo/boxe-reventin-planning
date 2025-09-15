@@ -1,0 +1,17 @@
+name: Weekly Reset
+
+on:
+  schedule:
+    - cron: "0 0 * * 6"   # every Saturday at 00:00 UTC
+  workflow_dispatch:       # allows manual run
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Supabase Function
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/weekly-reset"
