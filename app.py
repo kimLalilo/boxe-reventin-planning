@@ -135,9 +135,12 @@ def user_view(user):
 
                     with st.form(f"res_{slot['id']}"):
                         if already:
+                            current_weekday = datetime.datetime.now().weekday()
+                            is_past_day = idx < current_weekday
+
                             cancel = st.form_submit_button("Annuler", 
-                                                          use_container_width=True,
-                                                          type="primary")
+                                                            use_container_width=True,
+                                                            type="primary")
                             st.markdown("""
                             <style>
                             div[data-testid="stForm"] button[kind="primary"] {
@@ -147,9 +150,13 @@ def user_view(user):
                             </style>
                             """, unsafe_allow_html=True)
                             if cancel:
-                                supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
-                                st.success("Réservation annulée")
-                                st.rerun()
+                                if not is_past_day or is_reservation_allowed(idx, slot["start_time"]):
+                                    supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
+                                    st.success("Réservation annulée")
+                                    st.rerun()
+                                else:
+                                    st.info("Cours passé ou dans moins d'1h - Annulation impossible")
+                            
                         else:
                             if dispo > 0:
                                 reserve = st.form_submit_button("Réserver")
