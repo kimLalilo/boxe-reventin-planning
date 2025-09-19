@@ -2,6 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import hashlib
 import pandas as pd
+import datetime
 
 # -------------------------
 # Config graphique
@@ -69,6 +70,27 @@ def login_user(email, password):
         return True
     return False
 
+def is_reservation_allowed(weekday, start_time):
+    now = datetime.datetime.now()
+    current_weekday = now.weekday()  # 0 = Monday, 6 = Sunday
+    
+    # If course is on a future day, reservation is allowed
+    if weekday > current_weekday:
+        return True
+    
+    # If course is on a past day of the week, reservation is not allowed
+    if weekday < current_weekday:
+        return False
+    
+    # If course is today, check if it's at least 1 hour before start time
+    hour, minute = map(int, start_time.split(':'))
+    course_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    
+    # Check if current time is at least 1 hour before the course
+    time_difference = course_time - now
+    return time_difference.total_seconds() >= 3600  # 3600 seconds = 1 hour
+
+
 # -------------------------
 # UI Connexion
 # -------------------------
@@ -99,6 +121,8 @@ def user_view(user):
             with cols[idx]:
                 st.markdown(f"### {day}")
                 slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
+                if user.get("gym_douce_only", False):
+                    slots = [s for s in slots if "gym douce" in s["title"].lower()]
                 for slot in slots:
                     count_res = supabase.table("reservation").select("id", count="exact") \
                         .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
@@ -111,9 +135,12 @@ def user_view(user):
 
                     with st.form(f"res_{slot['id']}"):
                         if already:
+                            current_weekday = datetime.datetime.now().weekday()
+                            is_past_day = idx < current_weekday
+
                             cancel = st.form_submit_button("Annuler", 
-                                                          use_container_width=True,
-                                                          type="primary")
+                                                            use_container_width=True,
+                                                            type="primary")
                             st.markdown("""
                             <style>
                             div[data-testid="stForm"] button[kind="primary"] {
@@ -123,26 +150,34 @@ def user_view(user):
                             </style>
                             """, unsafe_allow_html=True)
                             if cancel:
-                                supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
-                                st.success("Réservation annulée")
-                                st.rerun()
+                                if not is_past_day or is_reservation_allowed(idx, slot["start_time"]):
+                                    supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
+                                    st.success("Réservation annulée")
+                                    st.rerun()
+                                else:
+                                    st.info("Cours passé ou dans moins d'1h - Annulation impossible")
+                            
                         else:
                             if dispo > 0:
                                 reserve = st.form_submit_button("Réserver")
                                 if reserve:
                                     week_res = supabase.table("reservation").select("id", count="exact") \
                                         .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
-                                    if week_res < user["formula"]:
-                                        supabase.table("reservation").insert({
-                                            "user_id": user["id"],
-                                            "course_id": slot["id"],
-                                            "waitlist": False,
-                                            "cancelled": False
-                                        }).execute()
-                                        st.success("Réservation confirmée")
-                                        st.rerun()
+                                    
+                                    if is_reservation_allowed(idx, slot["start_time"]):
+                                        if week_res < user["formula"]:
+                                            supabase.table("reservation").insert({
+                                                "user_id": user["id"],
+                                                "course_id": slot["id"],
+                                                "waitlist": False,
+                                                "cancelled": False
+                                            }).execute()
+                                            st.success("Réservation confirmée")
+                                            st.rerun()
+                                        else:
+                                            st.error("Limite de réservations atteinte pour votre formule.")
                                     else:
-                                        st.error("Limite de réservations atteinte pour votre formule.")
+                                        st.error("Réservations fermées pour ce cours (moins d'1h avant le début).")
                             else:
                                 wait = st.form_submit_button("Cours complet - Liste d'attente")
                                 if wait:
@@ -218,6 +253,7 @@ def admin_view():
                 pw = st.text_input("Mot de passe", type="password")
                 role = st.selectbox("Rôle", ["user","coach","admin"])
                 formula = st.number_input("Formule (nb cours)",1,5,1)
+                gym_douce_only = st.checkbox("Accès uniquement Gym Douce", value=False)
                 if st.form_submit_button("Créer"):
                     if get_user_by_email(email):
                         st.error("Email déjà utilisé")
@@ -227,7 +263,8 @@ def admin_view():
                             "email": email,
                             "password": hash_password(pw),
                             "role": role,
-                            "formula": formula
+                            "formula": formula,
+                            "gym_douce_only": gym_douce_only
                         }).execute()
                         st.success("Utilisateur créé")
                         st.rerun()
@@ -245,6 +282,7 @@ def admin_view():
                     email = st.text_input("Email", user_data["email"])
                     role = st.selectbox("Rôle", ["user","coach","admin"], index=["user","coach","admin"].index(user_data["role"]))
                     formula = st.number_input("Formule (nb cours)", 1, 5, user_data["formula"])
+                    gym_douce_only = st.checkbox("Accès uniquement Gym Douce", value=user_data.get("gym_douce_only", False))
                     update_btn = st.form_submit_button("💾 Sauvegarder")
                     delete_btn = st.form_submit_button("🗑️ Supprimer")
 
@@ -253,7 +291,8 @@ def admin_view():
                             "nom": nom,
                             "email": email,
                             "role": role,
-                            "formula": formula
+                            "formula": formula,
+                            "gym_douce_only": gym_douce_only
                         }).eq("id", user_id).execute()
                         st.success("Utilisateur mis à jour")
                         st.rerun()
