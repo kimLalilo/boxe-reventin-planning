@@ -17,15 +17,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Supabase CLI
-        run: npm install -g supabase
-
       - name: Deploy Supabase Function
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          supabase login --service-role $SUPABASE_SERVICE_ROLE_KEY
-          supabase functions deploy reset_my_table
+          npx supabase login --service-role $SUPABASE_SERVICE_ROLE_KEY
+          npx supabase functions deploy reset_my_table
 
       - name: Call Supabase Function
         env:
