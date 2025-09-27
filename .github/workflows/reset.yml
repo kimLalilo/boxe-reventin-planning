@@ -9,30 +9,9 @@ jobs:
   reset:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Deploy Supabase Function
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          npx supabase login --service-role $SUPABASE_SERVICE_ROLE_KEY
-          npx supabase functions deploy reset_my_table
-
       - name: Call Supabase Function
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          echo "Calling reset_my_table function..."
-          response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
-            "$SUPABASE_URL/functions/v1/reset_my_table")
-          echo "$response"
+            "${{ secrets.SUPABASE_URL }}/functions/reset_my_table"
