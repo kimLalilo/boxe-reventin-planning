@@ -73,22 +73,27 @@ def login_user(email, password):
 def is_reservation_allowed(weekday, start_time):
     now = datetime.datetime.now()
     current_weekday = now.weekday()  # 0 = Monday, 6 = Sunday
-    
-    # If course is on a future day, reservation is allowed
+
+    # --- NEXT WEEK SAT & SUN RULE ---
+    # If user selects Saturday (5) or Sunday (6), allow booking for *next* week
+    if weekday in [5, 6]:
+        return True
+
+    # --- SAME WEEK RULES ---
+    # If course is on a future day (Mon–Fri), reservation is allowed
     if weekday > current_weekday:
         return True
-    
+
     # If course is on a past day of the week, reservation is not allowed
     if weekday < current_weekday:
         return False
-    
+
     # If course is today, check if it's at least 1 hour before start time
     hour, minute = map(int, start_time.split(':'))
     course_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    
-    # Check if current time is at least 1 hour before the course
+
     time_difference = course_time - now
-    return time_difference.total_seconds() >= 3600  # 3600 seconds = 1 hour
+    return time_difference.total_seconds() >= 3600  # must be 1+ hour ahead
 
 
 # -------------------------
