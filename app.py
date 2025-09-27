@@ -76,7 +76,7 @@ def is_reservation_allowed(weekday, start_time):
 
     # --- NEXT WEEK SAT & SUN RULE ---
     # If user selects Saturday (5) or Sunday (6), allow booking for *next* week
-    if weekday in [5, 6]:
+    if current_weekday in [5, 6]:
         return True
 
     # --- SAME WEEK RULES ---
