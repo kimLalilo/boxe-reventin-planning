@@ -88,12 +88,12 @@ def is_reservation_allowed(weekday, start_time):
     if weekday < current_weekday:
         return False
 
-    # If course is today, check if it's at least 1 hour before start time
-    hour, minute = map(int, start_time.split(':'))
-    course_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-    time_difference = course_time - now
-    return time_difference.total_seconds() >= 3600  # must be 1+ hour ahead
+    # If course is today, check if it's in the next hour or later
+    course_hour = int(start_time.split(':')[0])
+    current_hour = now.hour
+    
+    # Allow booking if course is in a future hour (not considering minutes)
+    return course_hour - 1 > current_hour
 
 
 # -------------------------
@@ -101,8 +101,8 @@ def is_reservation_allowed(weekday, start_time):
 # -------------------------
 def login_ui():
     with st.form("login_form"):
-        email = st.text_input("Email")
-        pw = st.text_input("Mot de passe", type="password")
+        email = st.text_input("Email").strip().lower()
+        pw = st.text_input("Mot de passe", type="password").strip()
         submitted = st.form_submit_button("Se connecter")
         if submitted:
             if login_user(email, pw):
