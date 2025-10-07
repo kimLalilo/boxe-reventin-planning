@@ -101,8 +101,8 @@ def is_reservation_allowed(weekday, start_time):
 # -------------------------
 def login_ui():
     with st.form("login_form"):
-        email = st.text_input("Email").strip().lower()
-        pw = st.text_input("Mot de passe", type="password").strip()
+        email = (st.text_input("Email") or "").strip().lower()
+        pw = (st.text_input("Mot de passe", type="password") or "").strip()
         submitted = st.form_submit_button("Se connecter")
         if submitted:
             if login_user(email, pw):
