@@ -93,7 +93,7 @@ def is_reservation_allowed(weekday, start_time):
     current_hour = now.hour
     
     # Allow booking if course is in a future hour (not considering minutes)
-    return course_hour - 1 > current_hour
+    return current_hour < course_hour - 1
 
 
 # -------------------------
