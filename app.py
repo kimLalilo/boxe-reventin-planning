@@ -135,8 +135,18 @@ def user_view(user):
                     st.markdown(f"**{slot['title']} ({slot['start_time']}-{slot['end_time']})**")
                     st.write(f"Places restantes : {dispo}")
 
+                    now = datetime.datetime.now()
+                    current_week = now.isocalendar()[1]
+                    current_year = now.year
+                    target_week = current_week + 1 if now.weekday() in [5, 6] else current_week
+
                     already = supabase.table("reservation").select("*") \
-                        .eq("user_id", user["id"]).eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+                        .eq("user_id", user["id"]) \
+                        .eq("course_id", slot["id"]) \
+                        .eq("cancelled", False) \
+                        .eq("week_num", target_week) \
+                        .eq("year", current_year) \
+                        .execute().data
 
                     with st.form(f"res_{slot['id']}"):
                         if already:
@@ -171,12 +181,28 @@ def user_view(user):
                                     
                                     if is_reservation_allowed(idx, slot["start_time"]):
                                         if week_res < user["formula"]:
+                                            now = datetime.datetime.now()
+                                            # Determine which week the reservation is for
+                                            current_week = now.isocalendar()[1]
+                                            current_year = now.year
+
+                                            # If today is Saturday or Sunday, book for next week
+                                            if now.weekday() in [5, 6]:
+                                                week_num = current_week + 1
+                                                year = current_year
+                                            else:
+                                                week_num = current_week
+                                                year = current_year
+
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
                                                 "waitlist": False,
-                                                "cancelled": False
+                                                "cancelled": False,
+                                                "week_num": week_num,
+                                                "year": year
                                             }).execute()
+
                                             st.success("Réservation confirmée")
                                             st.rerun()
                                         else:
@@ -190,7 +216,9 @@ def user_view(user):
                                         "user_id": user["id"],
                                         "course_id": slot["id"],
                                         "waitlist": True,
-                                        "cancelled": False
+                                        "cancelled": False,
+                                        "week_num": week_num,
+                                        "year": year
                                     }).execute()
                                     st.success("Inscrit sur liste d'attente")
                                     st.rerun()
@@ -228,7 +256,17 @@ def coach_view():
                     st.write(f"{count_res}/{slot['capacity']} réservés")
                 if count_res + wait_count > 0:
                     with st.expander(f"Voir utilisateurs ({count_res})"):
-                        res = supabase.table("reservation").select("*, users(*)").eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+                        now = datetime.datetime.now()
+                        current_week = now.isocalendar()[1]
+                        current_year = now.year
+                        target_week = current_week + 1 if now.weekday() in [5, 6] else current_week
+
+                        res = supabase.table("reservation").select("*, users(*)") \
+                            .eq("course_id", slot["id"]) \
+                            .eq("cancelled", False) \
+                            .eq("week_num", target_week) \
+                            .eq("year", current_year) \
+                            .execute().data
                         user_lines = []
                         for r in res:
                             user_name = r['users']['nom'] if 'users' in r and r['users'] else "Inconnu"
