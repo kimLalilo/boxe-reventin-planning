@@ -264,13 +264,24 @@ def coach_view():
                         now = datetime.datetime.now()
                         current_week = now.isocalendar()[1]
                         current_year = now.year
-                        target_week = current_week + 1 if now.weekday() in [5, 6] else current_week
+                        if now.weekday() in [5, 6]:
+                            # Determine the last ISO week number of the current year
+                            last_week = datetime.date(current_year, 12, 28).isocalendar()[1]
+                            if current_week == last_week:
+                                target_week = 1
+                                target_year = current_year + 1
+                            else:
+                                target_week = current_week + 1
+                                target_year = current_year
+                        else:
+                            target_week = current_week
+                            target_year = current_year
 
                         res = supabase.table("reservation").select("*, users(*)") \
                             .eq("course_id", slot["id"]) \
                             .eq("cancelled", False) \
                             .eq("week_num", target_week) \
-                            .eq("year", current_year) \
+                            .eq("year", target_year) \
                             .execute().data
                         user_lines = []
                         for r in res:
