@@ -250,12 +250,13 @@ def coach_view():
     for idx, day in enumerate(weekdays):
         with cols[idx]:
             st.markdown(f"### {day}")
+            target_week, target_year = get_current_week_and_year()
             slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
             for slot in slots:
                 count_res = supabase.table("reservation").select("id", count="exact") \
-                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", target_year).execute().count
                 wait_count = supabase.table("reservation").select("id", count="exact") \
-                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).execute().count
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).eq("week_num", target_week).eq("year", target_year).execute().count
                 st.markdown(f"**{slot['title']}** ({slot['start_time']}-{slot['end_time']})")
                 if count_res == 0:
                     st.markdown(f"<span style='color:red'>{count_res}/{slot['capacity']} réservés</span>", unsafe_allow_html=True)
@@ -263,8 +264,6 @@ def coach_view():
                     st.write(f"{count_res}/{slot['capacity']} réservés")
                 if count_res + wait_count > 0:
                     with st.expander(f"Voir utilisateurs ({count_res})"):
-
-                        target_week, target_year = get_current_week_and_year()
 
                         res = supabase.table("reservation").select("*, users(*)") \
                             .eq("course_id", slot["id"]) \
