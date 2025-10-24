@@ -190,6 +190,11 @@ def user_view(user):
                                             if now.weekday() in [5, 6]:
                                                 week_num = current_week + 1
                                                 year = current_year
+                                                # Handle year rollover if week_num exceeds the max week of the year
+                                                last_week = datetime.date(current_year, 12, 28).isocalendar()[1]
+                                                if week_num > last_week:
+                                                    week_num = 1
+                                                    year = current_year + 1
                                             else:
                                                 week_num = current_week
                                                 year = current_year
