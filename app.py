@@ -219,6 +219,7 @@ def user_view(user):
                             else:
                                 wait = st.form_submit_button("Cours complet - Liste d'attente")
                                 if wait:
+                                    week_num, year = get_current_week_and_year()
                                     supabase.table("reservation").insert({
                                         "user_id": user["id"],
                                         "course_id": slot["id"],
