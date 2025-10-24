@@ -193,13 +193,13 @@ def user_view(user):
                             if dispo > 0:
                                 reserve = st.form_submit_button("Réserver")
                                 if reserve:
+                                    week_num, year = get_current_week_and_year()
                                     week_res = supabase.table("reservation").select("id", count="exact") \
-                                        .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
-                                    
+                                        .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", week_num).eq("year", year).execute().count
+
                                     if is_reservation_allowed(idx, slot["start_time"]):
                                         if week_res < user["formula"]:
-
-                                            week_num, year = get_current_week_and_year()
+                                            
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
