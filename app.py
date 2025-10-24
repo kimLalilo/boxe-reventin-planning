@@ -49,6 +49,27 @@ def verify_password(pw, hashed):
 def get_weekdays():
     return ["Lundi","Mardi","Mercredi","Jeudi","Vendredi"]
 
+
+def get_current_week_and_year():
+    now = datetime.datetime.now()
+    # Determine which week the reservation is for
+    current_week = now.isocalendar()[1]
+    current_year = now.year
+
+    # If today is Saturday or Sunday, book for next week
+    if now.weekday() in [5, 6]:
+        week_num = current_week + 1
+        year = current_year
+        # Handle year rollover if week_num exceeds the max week of the year
+        last_week = datetime.date(current_year, 12, 31).isocalendar()[1]
+        if week_num > last_week:
+            week_num = 1
+            year = current_year + 1
+    else:
+        week_num = current_week
+        year = current_year
+    return week_num, year
+
 # -------------------------
 # Users
 # -------------------------
@@ -126,17 +147,23 @@ def user_view(user):
             with cols[idx]:
                 st.markdown(f"### {day}")
                 slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
+                target_week, current_year = get_current_week_and_year()
                 if user.get("gym_douce_only", False):
                     slots = [s for s in slots if "gym douce" in s["title"].lower()]
                 for slot in slots:
                     count_res = supabase.table("reservation").select("id", count="exact") \
-                        .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                        .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", current_year).execute().count
                     dispo = slot["capacity"] - count_res
                     st.markdown(f"**{slot['title']} ({slot['start_time']}-{slot['end_time']})**")
                     st.write(f"Places restantes : {dispo}")
 
                     already = supabase.table("reservation").select("*") \
-                        .eq("user_id", user["id"]).eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+                        .eq("user_id", user["id"]) \
+                        .eq("course_id", slot["id"]) \
+                        .eq("cancelled", False) \
+                        .eq("week_num", target_week) \
+                        .eq("year", current_year) \
+                        .execute().data
 
                     with st.form(f"res_{slot['id']}"):
                         if already:
@@ -166,17 +193,22 @@ def user_view(user):
                             if dispo > 0:
                                 reserve = st.form_submit_button("Réserver")
                                 if reserve:
+                                    week_num, year = get_current_week_and_year()
                                     week_res = supabase.table("reservation").select("id", count="exact") \
-                                        .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
-                                    
+                                        .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", week_num).eq("year", year).execute().count
+
                                     if is_reservation_allowed(idx, slot["start_time"]):
                                         if week_res < user["formula"]:
+                                            
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
                                                 "waitlist": False,
-                                                "cancelled": False
+                                                "cancelled": False,
+                                                "week_num": week_num,
+                                                "year": year
                                             }).execute()
+
                                             st.success("Réservation confirmée")
                                             st.rerun()
                                         else:
@@ -186,11 +218,14 @@ def user_view(user):
                             else:
                                 wait = st.form_submit_button("Cours complet - Liste d'attente")
                                 if wait:
+                                    week_num, year = get_current_week_and_year()
                                     supabase.table("reservation").insert({
                                         "user_id": user["id"],
                                         "course_id": slot["id"],
                                         "waitlist": True,
-                                        "cancelled": False
+                                        "cancelled": False,
+                                        "week_num": week_num,
+                                        "year": year
                                     }).execute()
                                     st.success("Inscrit sur liste d'attente")
                                     st.rerun()
@@ -215,12 +250,13 @@ def coach_view():
     for idx, day in enumerate(weekdays):
         with cols[idx]:
             st.markdown(f"### {day}")
+            target_week, target_year = get_current_week_and_year()
             slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
             for slot in slots:
                 count_res = supabase.table("reservation").select("id", count="exact") \
-                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", target_year).execute().count
                 wait_count = supabase.table("reservation").select("id", count="exact") \
-                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).execute().count
+                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).eq("week_num", target_week).eq("year", target_year).execute().count
                 st.markdown(f"**{slot['title']}** ({slot['start_time']}-{slot['end_time']})")
                 if count_res == 0:
                     st.markdown(f"<span style='color:red'>{count_res}/{slot['capacity']} réservés</span>", unsafe_allow_html=True)
@@ -228,7 +264,13 @@ def coach_view():
                     st.write(f"{count_res}/{slot['capacity']} réservés")
                 if count_res + wait_count > 0:
                     with st.expander(f"Voir utilisateurs ({count_res})"):
-                        res = supabase.table("reservation").select("*, users(*)").eq("course_id", slot["id"]).eq("cancelled", False).execute().data
+
+                        res = supabase.table("reservation").select("*, users(*)") \
+                            .eq("course_id", slot["id"]) \
+                            .eq("cancelled", False) \
+                            .eq("week_num", target_week) \
+                            .eq("year", target_year) \
+                            .execute().data
                         user_lines = []
                         for r in res:
                             user_name = r['users']['nom'] if 'users' in r and r['users'] else "Inconnu"
