@@ -61,7 +61,7 @@ def get_current_week_and_year():
         week_num = current_week + 1
         year = current_year
         # Handle year rollover if week_num exceeds the max week of the year
-        last_week = datetime.date(current_year, 12, 28).isocalendar()[1]
+        last_week = datetime.date(current_year, 12, 31).isocalendar()[1]
         if week_num > last_week:
             week_num = 1
             year = current_year + 1
