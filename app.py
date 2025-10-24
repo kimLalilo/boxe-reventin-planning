@@ -147,16 +147,15 @@ def user_view(user):
             with cols[idx]:
                 st.markdown(f"### {day}")
                 slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
+                target_week, current_year = get_current_week_and_year()
                 if user.get("gym_douce_only", False):
                     slots = [s for s in slots if "gym douce" in s["title"].lower()]
                 for slot in slots:
                     count_res = supabase.table("reservation").select("id", count="exact") \
-                        .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).execute().count
+                        .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", current_year).execute().count
                     dispo = slot["capacity"] - count_res
                     st.markdown(f"**{slot['title']} ({slot['start_time']}-{slot['end_time']})**")
                     st.write(f"Places restantes : {dispo}")
-
-                    target_week, current_year = get_current_week_and_year()
 
                     already = supabase.table("reservation").select("*") \
                         .eq("user_id", user["id"]) \
