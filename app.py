@@ -52,23 +52,17 @@ def get_weekdays():
 
 def get_current_week_and_year():
     now = datetime.datetime.now()
-    # Determine which week the reservation is for
-    current_week = now.isocalendar()[1]
-    current_year = now.year
 
-    # If today is Saturday or Sunday, book for next week
+    # If today is Saturday or Sunday, shift to next Monday
     if now.weekday() in [5, 6]:
-        week_num = current_week + 1
-        year = current_year
-        # Handle year rollover if week_num exceeds the max week of the year
-        last_week = datetime.date(current_year, 12, 31).isocalendar()[1]
-        if week_num > last_week:
-            week_num = 1
-            year = current_year + 1
+        days_until_monday = 7 - now.weekday()
+        next_monday = now + datetime.timedelta(days=days_until_monday)
+        iso_info = next_monday.isocalendar()
     else:
-        week_num = current_week
-        year = current_year
-    return week_num, year
+        iso_info = now.isocalendar()
+
+    # iso_info = (ISO_year, ISO_week, ISO_weekday)
+    return iso_info[1], iso_info[0]
 
 # -------------------------
 # Users
