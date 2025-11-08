@@ -95,8 +95,7 @@ def is_bank_holiday_fr(date):
         easter + datetime.timedelta(days=39),  # Ascension
         easter + datetime.timedelta(days=50),  # Pentecost Monday
     ]
-
-
+    return date in holidays
 def get_current_week_and_year():
     now = datetime.datetime.now()
 
