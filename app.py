@@ -84,7 +84,6 @@ def is_bank_holiday_fr(date):
         h = (f + 11 * g) // 319
         j = (60 * (5 - d) + b) // 4
         k = (60 * (5 - d) + b) % 4
-        m = (g - h + j + k) % 7
         n = (g - h + j + k + 114) // 31
         p = (g - h + j + k + 114) % 31
         return datetime.date(y, n, p + 1)
