@@ -49,7 +49,52 @@ def verify_password(pw, hashed):
 def get_weekdays():
     return ["Lundi","Mardi","Mercredi","Jeudi","Vendredi"]
 
+def is_bank_holiday_fr(date):
+    """
+    Return True if the given date (datetime.date or datetime.datetime) is a French bank holiday.
+    """
+    if isinstance(date, datetime.datetime):
+        date = date.date()
+    year = date.year
 
+    # Fixed-date holidays
+    fixed = [
+        (1, 1),    # New Year's Day
+        (5, 1),    # Labour Day
+        (5, 8),    # Victory in Europe Day
+        (7, 14),   # Bastille Day
+        (8, 15),   # Assumption of Mary
+        (11, 1),   # All Saints' Day
+        (11, 11),  # Armistice Day
+        (12, 25),  # Christmas
+    ]
+    if (date.month, date.day) in fixed:
+        return True
+
+    # Compute Easter Monday, Ascension, Pentecost Monday
+    def easter_date(y):
+        "Returns Easter as a date object."
+        a = y // 100
+        b = y % 100
+        c = (3 * (a + 25)) // 4
+        d = (3 * (a + 25)) % 4
+        e = (8 * (a + 11)) // 25
+        f = (5 * a + b) % 19
+        g = (19 * f + c - e) % 30
+        h = (f + 11 * g) // 319
+        j = (60 * (5 - d) + b) // 4
+        k = (60 * (5 - d) + b) % 4
+        n = (g - h + j + k + 114) // 31
+        p = (g - h + j + k + 114) % 31
+        return datetime.date(y, n, p + 1)
+
+    easter = easter_date(year)
+    holidays = [
+        easter + datetime.timedelta(days=1),   # Easter Monday
+        easter + datetime.timedelta(days=39),  # Ascension
+        easter + datetime.timedelta(days=50),  # Pentecost Monday
+    ]
+    return date in holidays
 def get_current_week_and_year():
     now = datetime.datetime.now()
 
@@ -193,7 +238,11 @@ def user_view(user):
 
                                     if is_reservation_allowed(idx, slot["start_time"]):
                                         if week_res < user["formula"]:
-                                            
+                                            # Construire la date du cours
+                                            slot_date = datetime.date.fromisocalendar(year, week_num, slot['weekday'] + 1)
+                                            # Vérifier si c'est un jour férié
+                                            if is_bank_holiday_fr(slot_date):
+                                                st.error("Impossible de réserver : ce jour est un jour férié.")
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
