@@ -244,7 +244,6 @@ def user_view(user):
                                             # Vérifier si c'est un jour férié
                                             if is_bank_holiday_fr(slot_date):
                                                 st.error("Impossible de réserver : ce jour est un jour férié.")
-                                                st.rerun()
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
