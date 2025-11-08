@@ -84,6 +84,7 @@ def is_bank_holiday_fr(date):
         h = (f + 11 * g) // 319
         j = (60 * (5 - d) + b) // 4
         k = (60 * (5 - d) + b) % 4
+        m = (g - h + j + k) % 7
         n = (g - h + j + k + 114) // 31
         p = (g - h + j + k + 114) % 31
         return datetime.date(y, n, p + 1)
@@ -94,7 +95,8 @@ def is_bank_holiday_fr(date):
         easter + datetime.timedelta(days=39),  # Ascension
         easter + datetime.timedelta(days=50),  # Pentecost Monday
     ]
-    return date in holidays
+
+
 def get_current_week_and_year():
     now = datetime.datetime.now()
 
@@ -243,6 +245,7 @@ def user_view(user):
                                             # Vérifier si c'est un jour férié
                                             if is_bank_holiday_fr(slot_date):
                                                 st.error("Impossible de réserver : ce jour est un jour férié.")
+                                                st.rerun()
                                             supabase.table("reservation").insert({
                                                 "user_id": user["id"],
                                                 "course_id": slot["id"],
