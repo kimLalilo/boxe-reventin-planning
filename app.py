@@ -3,7 +3,10 @@ from supabase import create_client, Client
 import hashlib
 import pandas as pd
 import datetime
+import pendulum
 
+# Définir le fuseau horaire
+tz = pendulum.timezone("Europe/Paris")
 # -------------------------
 # Config graphique
 # -------------------------
@@ -98,7 +101,7 @@ def is_bank_holiday_fr(date):
 
 
 def get_current_week_and_year():
-    now = datetime.datetime.now()
+    now = pendulum.now(tz)
 
     # If today is Saturday or Sunday, shift to next Monday
     if now.weekday() in [5, 6]:
@@ -133,7 +136,7 @@ def login_user(email, password):
     return False
 
 def is_reservation_allowed(weekday, start_time):
-    now = datetime.datetime.now()
+    now = pendulum.now(tz)
     current_weekday = now.weekday()  # 0 = Monday, 6 = Sunday
 
     # print(f"DEBUG: weekday = {weekday}, current_weekday = {current_weekday}")
@@ -217,7 +220,7 @@ def user_view(user):
 
                     with st.form(f"res_{slot['id']}"):
                         if already:
-                            current_weekday = datetime.datetime.now().weekday()
+                            current_weekday = pendulum.now(tz).weekday()
                             is_past_day = idx < current_weekday
                             # print(f"DEBUG Cancel: idx={idx}, current_weekday={current_weekday}, is_past_day={is_past_day}")
 
