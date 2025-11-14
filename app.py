@@ -136,6 +136,8 @@ def is_reservation_allowed(weekday, start_time):
     now = datetime.datetime.now()
     current_weekday = now.weekday()  # 0 = Monday, 6 = Sunday
 
+    # print(f"DEBUG: weekday = {weekday}, current_weekday = {current_weekday}")
+
     # --- NEXT WEEK SAT & SUN RULE ---
     # If user selects Saturday (5) or Sunday (6), allow booking for *next* week
     if current_weekday in [5, 6]:
@@ -150,13 +152,20 @@ def is_reservation_allowed(weekday, start_time):
     if weekday < current_weekday:
         return False
 
-    # If course is today, check if it's in the next hour or later
-    course_hour = int(start_time.split(':')[0])
-    current_hour = now.hour
-    
-    # Allow booking if course is in a future hour (not considering minutes)
-    return current_hour < course_hour - 1
+    # If course is today, check if it's at least 2 hours away
+    course_time_parts = start_time.split(':')
+    course_hour = int(course_time_parts[0])
+    course_minute = int(course_time_parts[1]) if len(course_time_parts) > 1 else 0
 
+    course_datetime = now.replace(hour=course_hour, minute=course_minute, second=0, microsecond=0)
+    time_difference = (course_datetime - now).total_seconds() / 3600  # difference in hours
+
+    # Allow booking/cancellation only if course is at least 2 hours away and hasn't started yet
+    # print(f"DEBUG: now = {now}, course_datetime = {course_datetime}, time_difference = {time_difference}")
+    if now < course_datetime:
+        return time_difference >= 2
+    else:
+        return False
 
 # -------------------------
 # UI Connexion
@@ -210,6 +219,7 @@ def user_view(user):
                         if already:
                             current_weekday = datetime.datetime.now().weekday()
                             is_past_day = idx < current_weekday
+                            # print(f"DEBUG Cancel: idx={idx}, current_weekday={current_weekday}, is_past_day={is_past_day}")
 
                             cancel = st.form_submit_button("Annuler", 
                                                             use_container_width=True,
@@ -223,12 +233,12 @@ def user_view(user):
                             </style>
                             """, unsafe_allow_html=True)
                             if cancel:
-                                if not is_past_day or is_reservation_allowed(idx, slot["start_time"]):
+                                if is_reservation_allowed(idx, slot["start_time"]):
                                     supabase.table("reservation").update({"cancelled": True}).eq("id", already[0]["id"]).execute()
                                     st.success("Réservation annulée")
                                     st.rerun()
                                 else:
-                                    st.info("Cours passé ou dans moins d'1h - Annulation impossible")
+                                    st.info("Cours déjà passé ou dans moins d'2h - Annulation impossible")
                             
                         else:
                             if dispo > 0:
@@ -260,7 +270,7 @@ def user_view(user):
                                         else:
                                             st.error("Limite de réservations atteinte pour votre formule.")
                                     else:
-                                        st.error("Réservations fermées pour ce cours (moins d'1h avant le début).")
+                                        st.error("Réservations fermées pour ce cours (cours dans moins de 2h).")
                             else:
                                 wait = st.form_submit_button("Cours complet - Liste d'attente")
                                 if wait:
