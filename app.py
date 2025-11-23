@@ -199,7 +199,7 @@ def user_view(user):
         for idx, day in enumerate(weekdays):
             with cols[idx]:
                 st.markdown(f"### {day}")
-                slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
+                slots = supabase.table("courseslot").select("*").eq("weekday", idx).eq("enabled", True).order("start_time").execute().data
                 target_week, current_year = get_current_week_and_year()
                 if user.get("gym_douce_only", False):
                     slots = [s for s in slots if "gym douce" in s["title"].lower()]
@@ -310,7 +310,7 @@ def coach_view():
         with cols[idx]:
             st.markdown(f"### {day}")
             target_week, target_year = get_current_week_and_year()
-            slots = supabase.table("courseslot").select("*").eq("weekday", idx).order("start_time").execute().data
+            slots = supabase.table("courseslot").select("*").eq("weekday", idx).eq("enabled", True).order("start_time").execute().data
             for slot in slots:
                 count_res = supabase.table("reservation").select("id", count="exact") \
                     .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", target_year).execute().count
