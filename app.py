@@ -1,3 +1,7 @@
+import html
+import os
+from dateutil.easter import easter as easter_sunday
+
 import streamlit as st
 from supabase import create_client, Client
 import hashlib
@@ -7,6 +11,12 @@ import pendulum
 
 # Définir le fuseau horaire
 tz = pendulum.timezone("Europe/Paris")
+
+# Bandeau Connexion — priorité :
+# 1) Streamlit Cloud : « Manage app » → Secrets → voir get_landing_banner_message()
+# 2) Variable d’environnement LANDING_BANNER_MESSAGE
+# 3) Constante ci‑dessous (dev local sans secrets.toml)
+LANDING_BANNER_MESSAGE = ""
 # -------------------------
 # Config graphique
 # -------------------------
@@ -17,6 +27,15 @@ st.markdown("""
 .big-title {font-size: 2.5rem;color: #B22222;font-weight: bold;}
 .subtitle {color: #555555;}
 .stButton>button {background-color: #B22222;color: #FFFFFF;}
+.landing-banner {
+  background-color: #FDF2F2;
+  border-left: 4px solid #B22222;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  color: #333333;
+  font-size: 1rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,30 +93,16 @@ def is_bank_holiday_fr(date):
     if (date.month, date.day) in fixed:
         return True
 
-    # Compute Easter Monday, Ascension, Pentecost Monday
-    def easter_date(y):
-        "Returns Easter as a date object."
-        a = y // 100
-        b = y % 100
-        c = (3 * (a + 25)) // 4
-        d = (3 * (a + 25)) % 4
-        e = (8 * (a + 11)) // 25
-        f = (5 * a + b) % 19
-        g = (19 * f + c - e) % 30
-        h = (f + 11 * g) // 319
-        j = (60 * (5 - d) + b) // 4
-        k = (60 * (5 - d) + b) % 4
-        m = (g - h + j + k) % 7
-        n = (g - h + j + k + 114) // 31
-        p = (g - h + j + k + 114) % 31
-        return datetime.date(y, n, p + 1)
-
-    easter = easter_date(year)
+    # Easter / movable holidays (Western / France — Gregorian computus)
+    easter = easter_sunday(year)
     holidays = [
         easter + datetime.timedelta(days=1),   # Easter Monday
         easter + datetime.timedelta(days=39),  # Ascension
         easter + datetime.timedelta(days=50),  # Pentecost Monday
     ]
+    if date in holidays:
+        return True
+    return False
 
 
 def get_current_week_and_year():
@@ -173,6 +178,47 @@ def is_reservation_allowed(weekday, start_time):
 # -------------------------
 # UI Connexion
 # -------------------------
+def get_landing_banner_message():
+    """
+    Texte du bandeau sans redéploiement sur Streamlit Cloud : dans l’app,
+    Manage app → Secrets, ajouter par exemple :
+
+        [banner]
+        message = "La salle sera fermée …"
+
+    (Ce n’est pas un mot de passe ; c’est la config prévue par Streamlit pour ce cas.)
+    Alternative : clé plate ``LANDING_BANNER_MESSAGE = \"...\"`` au même endroit.
+    """
+    try:
+        sec = st.secrets
+        nested = sec.get("banner")
+        if isinstance(nested, dict):
+            m = (nested.get("message") or "").strip()
+            if m:
+                return m
+        m = str(sec.get("LANDING_BANNER_MESSAGE") or "").strip()
+        if m:
+            return m
+    except Exception:
+        pass
+
+    m = os.environ.get("LANDING_BANNER_MESSAGE", "").strip()
+    if m:
+        return m
+
+    return (LANDING_BANNER_MESSAGE or "").strip()
+
+
+def render_landing_banner():
+    msg = get_landing_banner_message()
+    if not msg:
+        return
+    st.markdown(
+        f"""<div class="landing-banner">{html.escape(msg)}</div>""",
+        unsafe_allow_html=True,
+    )
+
+
 def login_ui():
     with st.form("login_form"):
         email = (st.text_input("Email") or "").strip().lower()
@@ -475,6 +521,7 @@ tabs = st.tabs(["Connexion","Utilisateur","Coach","Admin"])
 
 with tabs[0]:
     if not user:
+        render_landing_banner()
         login_ui()
     else:
         st.info(f"Connecté en tant que {user['nom']} ({user['email']}) - rôle: {user['role']}")
