@@ -4,3 +4,4 @@ passlib[bcrypt]
 pandas
 supabase
 pendulum
+python-dateutil
