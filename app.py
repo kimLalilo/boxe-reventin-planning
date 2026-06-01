@@ -192,7 +192,7 @@ def get_landing_banner_message():
     try:
         sec = st.secrets
         nested = sec.get("banner")
-        if isinstance(nested, dict):
+        if nested is not None and hasattr(nested, "get"):
             m = (nested.get("message") or "").strip()
             if m:
                 return m
