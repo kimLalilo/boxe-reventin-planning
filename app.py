@@ -209,6 +209,36 @@ def get_landing_banner_message():
     return (LANDING_BANNER_MESSAGE or "").strip()
 
 
+def get_disabled_weekdays() -> set:
+    """
+    Streamlit Cloud secrets — add e.g.:
+        [disabled_weekdays]
+        days = "Lundi,Mercredi"
+    Returns a set of 0-based weekday indices (0=Lundi … 4=Vendredi).
+    """
+    raw = ""
+    try:
+        sec = st.secrets
+        nested = sec.get("disabled_weekdays")
+        if nested is not None and hasattr(nested, "get"):
+            raw = (nested.get("days") or "").strip()
+        if not raw:
+            raw = str(sec.get("DISABLED_WEEKDAYS") or "").strip()
+    except Exception:
+        pass
+
+    if not raw:
+        return set()
+
+    name_to_idx = {name.lower(): i for i, name in enumerate(get_weekdays())}
+    result = set()
+    for token in raw.split(","):
+        token = token.strip().lower()
+        if token in name_to_idx:
+            result.add(name_to_idx[token])
+    return result
+
+
 def render_landing_banner():
     msg = get_landing_banner_message()
     if not msg:
@@ -241,10 +271,14 @@ def user_view(user):
     with tabs[0]:
         st.subheader("Planning de la semaine (Lundi - Vendredi)")
         weekdays = get_weekdays()
+        disabled_days = get_disabled_weekdays()
         cols = st.columns(len(weekdays))
         for idx, day in enumerate(weekdays):
             with cols[idx]:
                 st.markdown(f"### {day}")
+                if idx in disabled_days:
+                    st.info("Fermé cette semaine")
+                    continue
                 slots = supabase.table("courseslot").select("*").eq("weekday", idx).eq("enabled", True).order("start_time").execute().data
                 target_week, current_year = get_current_week_and_year()
                 if user.get("gym_douce_only", False):
@@ -297,7 +331,9 @@ def user_view(user):
                                     week_res = supabase.table("reservation").select("id", count="exact") \
                                         .eq("user_id", user["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", week_num).eq("year", year).execute().count
 
-                                    if is_reservation_allowed(idx, slot["start_time"]):
+                                    if idx in disabled_days:
+                                        st.error("Impossible de réserver : ce jour est fermé.")
+                                    elif is_reservation_allowed(idx, slot["start_time"]):
                                         if week_res < user["formula"]:
                                             # Construire la date du cours
                                             slot_date = datetime.date.fromisocalendar(year, week_num, slot['weekday'] + 1)
