@@ -133,12 +133,15 @@ def get_current_user():
     return None
 
 def login_user(email, password):
+    """Returns "ok", "disabled" or "invalid"."""
     user = get_user_by_email(email)
     if user and verify_password(password, user["password"]):
+        if not user.get("enabled", True):
+            return "disabled"
         st.session_state["user_id"] = user["id"]
         st.session_state["role"] = user["role"]
-        return True
-    return False
+        return "ok"
+    return "invalid"
 
 def is_reservation_allowed(weekday, start_time):
     now = pendulum.now(tz)
@@ -255,9 +258,12 @@ def login_ui():
         pw = (st.text_input("Mot de passe", type="password") or "").strip()
         submitted = st.form_submit_button("Se connecter")
         if submitted:
-            if login_user(email, pw):
+            status = login_user(email, pw)
+            if status == "ok":
                 st.success("Connexion réussie")
                 st.rerun()
+            elif status == "disabled":
+                st.error("Compte désactivé. Contactez un administrateur.")
             else:
                 st.error("Email ou mot de passe invalide")
 
@@ -442,6 +448,7 @@ def admin_view():
                 role = st.selectbox("Rôle", ["user","coach","admin"])
                 formula = st.number_input("Formule (nb cours)",1,5,1)
                 gym_douce_only = st.checkbox("Accès uniquement Gym Douce", value=False)
+                enabled = st.checkbox("Compte activé", value=True)
                 if st.form_submit_button("Créer"):
                     if get_user_by_email(email):
                         st.error("Email déjà utilisé")
@@ -452,7 +459,8 @@ def admin_view():
                             "password": hash_password(pw),
                             "role": role,
                             "formula": formula,
-                            "gym_douce_only": gym_douce_only
+                            "gym_douce_only": gym_douce_only,
+                            "enabled": enabled
                         }).execute()
                         st.success("Utilisateur créé")
                         st.rerun()
@@ -471,6 +479,7 @@ def admin_view():
                     role = st.selectbox("Rôle", ["user","coach","admin"], index=["user","coach","admin"].index(user_data["role"]))
                     formula = st.number_input("Formule (nb cours)", 1, 5, user_data["formula"])
                     gym_douce_only = st.checkbox("Accès uniquement Gym Douce", value=user_data.get("gym_douce_only", False))
+                    enabled = st.checkbox("Compte activé", value=user_data.get("enabled", True))
                     update_btn = st.form_submit_button("💾 Sauvegarder")
                     delete_btn = st.form_submit_button("🗑️ Supprimer")
 
@@ -480,7 +489,8 @@ def admin_view():
                             "email": email,
                             "role": role,
                             "formula": formula,
-                            "gym_douce_only": gym_douce_only
+                            "gym_douce_only": gym_douce_only,
+                            "enabled": enabled
                         }).eq("id", user_id).execute()
                         st.success("Utilisateur mis à jour")
                         st.rerun()
@@ -552,6 +562,10 @@ def admin_view():
 # Main
 # -------------------------
 user = get_current_user()
+if user and not user.get("enabled", True):
+    st.session_state.clear()
+    user = None
+    st.warning("Votre compte a été désactivé. Contactez un administrateur.")
 
 tabs = st.tabs(["Connexion","Utilisateur","Coach","Admin"])
 
