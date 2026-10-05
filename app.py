@@ -163,20 +163,13 @@ def is_reservation_allowed(weekday, start_time):
     if weekday < current_weekday:
         return False
 
-    # If course is today, check if it's at least 2 hours away
-    course_time_parts = start_time.split(':')
-    course_hour = int(course_time_parts[0])
-    course_minute = int(course_time_parts[1]) if len(course_time_parts) > 1 else 0
+    # If course is today, allow changes until 1 hour before the start of the course
+    start_time_parts = start_time.split(':')
+    start_hour = int(start_time_parts[0])
+    start_minute = int(start_time_parts[1]) if len(start_time_parts) > 1 else 0
 
-    course_datetime = now.replace(hour=course_hour, minute=course_minute, second=0, microsecond=0)
-    time_difference = (course_datetime - now).total_seconds() / 3600  # difference in hours
-
-    # Allow booking/cancellation only if course is at least 2 hours away and hasn't started yet
-    # print(f"DEBUG: now = {now}, course_datetime = {course_datetime}, time_difference = {time_difference}")
-    if now < course_datetime:
-        return time_difference >= 2
-    else:
-        return False
+    course_start = now.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+    return now < course_start.subtract(hours=1)
 
 # -------------------------
 # UI Connexion
@@ -327,7 +320,7 @@ def user_view(user):
                                     st.success("Réservation annulée")
                                     st.rerun()
                                 else:
-                                    st.info("Cours déjà passé ou dans moins d'2h - Annulation impossible")
+                                    st.info("Cours déjà passé ou dans moins d'1h - Annulation impossible")
                             
                         else:
                             if dispo > 0:
@@ -361,21 +354,9 @@ def user_view(user):
                                         else:
                                             st.error("Limite de réservations atteinte pour votre formule.")
                                     else:
-                                        st.error("Réservations fermées pour ce cours (cours dans moins de 2h).")
+                                        st.error("Réservations fermées pour ce cours (cours dans moins d'1h).")
                             else:
-                                wait = st.form_submit_button("Cours complet - Liste d'attente")
-                                if wait:
-                                    week_num, year = get_current_week_and_year()
-                                    supabase.table("reservation").insert({
-                                        "user_id": user["id"],
-                                        "course_id": slot["id"],
-                                        "waitlist": True,
-                                        "cancelled": False,
-                                        "week_num": week_num,
-                                        "year": year
-                                    }).execute()
-                                    st.success("Inscrit sur liste d'attente")
-                                    st.rerun()
+                                st.form_submit_button("Cours complet", disabled=True)
 
     # Mon compte
     with tabs[1]:
@@ -402,27 +383,25 @@ def coach_view():
             for slot in slots:
                 count_res = supabase.table("reservation").select("id", count="exact") \
                     .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", False).eq("week_num", target_week).eq("year", target_year).execute().count
-                wait_count = supabase.table("reservation").select("id", count="exact") \
-                    .eq("course_id", slot["id"]).eq("cancelled", False).eq("waitlist", True).eq("week_num", target_week).eq("year", target_year).execute().count
                 st.markdown(f"**{slot['title']}** ({slot['start_time']}-{slot['end_time']})")
                 if count_res == 0:
                     st.markdown(f"<span style='color:red'>{count_res}/{slot['capacity']} réservés</span>", unsafe_allow_html=True)
                 else:
                     st.write(f"{count_res}/{slot['capacity']} réservés")
-                if count_res + wait_count > 0:
+                if count_res > 0:
                     with st.expander(f"Voir utilisateurs ({count_res})"):
 
                         res = supabase.table("reservation").select("*, users(*)") \
                             .eq("course_id", slot["id"]) \
                             .eq("cancelled", False) \
+                            .eq("waitlist", False) \
                             .eq("week_num", target_week) \
                             .eq("year", target_year) \
                             .execute().data
                         user_lines = []
                         for r in res:
                             user_name = r['users']['nom'] if 'users' in r and r['users'] else "Inconnu"
-                            waitlist = " (liste d'attente)" if r.get('waitlist', False) else ""
-                            st.markdown(f"- {user_name}{waitlist}")
+                            st.markdown(f"- {user_name}")
 
 # -------------------------
 # UI Admin
