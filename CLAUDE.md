@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Single-page Streamlit app ("Club de Boxe Reventin") for managing boxing class bookings: weekly schedule, reservations/waitlist, and admin management of users and course slots. All application code lives in `app.py`; there is no separate frontend/backend split. UI text and user-facing strings are in French.
+Single-page Streamlit app ("Club de Boxe Reventin") for managing boxing class bookings: weekly schedule, reservations, and admin management of users and course slots. All application code lives in `app.py`; there is no separate frontend/backend split. UI text and user-facing strings are in French.
 
 Data is stored in Supabase (Postgres), accessed via the `supabase` Python client (`supabase.table(...)`) — not an ORM. There are two tables used throughout: `users` and `courseslot`, plus a `reservation` table linking them.
 
@@ -44,12 +44,12 @@ The whole file executes top-to-bottom on every Streamlit rerun (standard Streaml
 2. **Supabase client init** — module-level `supabase` client built from secrets; every DB call in the file goes through this one object.
 3. **Helpers** (roughly grouped by comment banners):
    - Auth: `hash_password`/`verify_password` (SHA-256), `login_user`, `get_current_user` (reads `st.session_state["user_id"]`).
-   - Calendar/rules: `get_weekdays()` (Mon–Fri only, no weekend classes), `is_bank_holiday_fr()` (French fixed + Easter-relative holidays), `get_current_week_and_year()` (ISO week; rolls Sat/Sun forward to next Monday's week), `is_reservation_allowed()` (core booking-window rule: can't book past days in the current week, same-day bookings need ≥2h lead time, Sat/Sun always allows booking into *next* week).
+   - Calendar/rules: `get_weekdays()` (Mon–Fri only, no weekend classes), `is_bank_holiday_fr()` (French fixed + Easter-relative holidays), `get_current_week_and_year()` (ISO week; rolls Sat/Sun forward to next Monday's week), `is_reservation_allowed()` (core booking-window rule: can't book past days in the current week, same-day changes allowed until 1h before the course's start time, Sat/Sun always allows booking into *next* week).
    - Config-from-secrets: `get_landing_banner_message()`, `get_disabled_weekdays()`.
 4. **Role-based views**, each a function taking the current user (or none) and rendering with `st.tabs`/`st.form`:
    - `login_ui()` — email/password form, sets `session_state["user_id"]`/`["role"]` on success.
-   - `user_view(user)` — weekly schedule tab (booking/cancel/waitlist per `courseslot`, filtered by `disabled_weekdays` and, if `user["gym_douce_only"]`, to "gym douce" titles only) + account tab (password change).
-   - `coach_view()` — read-only weekly roster with reservation/waitlist counts and an expander listing attendees per slot.
+   - `user_view(user)` — weekly schedule tab (booking/cancel per `courseslot`, filtered by `disabled_weekdays` and, if `user["gym_douce_only"]`, to "gym douce" titles only) + account tab (password change).
+   - `coach_view()` — read-only weekly roster with reservation counts and an expander listing attendees per slot.
    - `admin_view()` — full CRUD on `users` and `courseslot` via paired "Ajouter" / "Modifier / Supprimer" expanders, each wrapping an `st.form`.
 5. **Main** — computes `user = get_current_user()`, then renders four top-level `st.tabs` (Connexion / Utilisateur / Coach / Admin), gating each on `user["role"]`.
 

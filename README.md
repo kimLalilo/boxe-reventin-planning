@@ -11,12 +11,11 @@ La base de données est hébergée sur **Supabase (PostgreSQL)**.
 - Connexion / déconnexion sécurisée  
 - Consultation du planning de la semaine (Lundi → Vendredi)  
 - Réservation de cours selon la formule choisie  
-- Inscription sur liste d’attente si cours complet  
 - Annulation de réservation  
 - Gestion de son compte et changement de mot de passe  
 
 ### Pour les coachs
-- Consultation du planning avec nombre de places réservées et liste d’attente  
+- Consultation du planning avec nombre de places réservées  
 - Consultation des participants aux cours  
 
 ### Pour les administrateurs
